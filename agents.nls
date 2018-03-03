@@ -21,9 +21,13 @@ globals [graph flip_num]
 to init-buses
   ; Initialize your agents here.
   ;let route1 [4 5 16 11 17 7 1 19 23 14 0 15 18 15 12 22 13 10 21 20 9 8 2 8 6 8 9 3] ; starts at 3
-  let brown_route [3 9 8 2 8 6]
+  let orange_route [3 9 20 12 15 18 ]
   
-  let rev_brown_route [6 8 2 8 9 3]
+  let brown_route [3 9 8 6 8 2 ]
+ 
+ let green_route [3 4 10 13 23 19 1 ]
+  let blue_route [3 20 21 22 0 14 ]
+      let rev_brown_route [6 8 2 8 9 3]
   let start_bus_s 3
   
   ask buses [
