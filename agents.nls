@@ -23,22 +23,14 @@ globals [graph flip_num]
 to init-buses
   ; Initialize your agents here.
   let route1 [4 5 16 11 17 7 1 19 23 14 0 15 18 15 12 22 13 10 21 20 9 8 2 8 6 8 9 3] ; starts at 3
-  let route2 reverse route1
-  let start_bus_s 3
-  set route2 but-first route2
-  set route2 lput start_bus_s route2
+  
   set temp_route []
   
   ask buses [
     if not is-list? bus_route [
-      ;print (word "Flip number " flip_num)
-      set flip_num flip_num + 1
-      ifelse remainder flip_num 2 = 0 [
-        set bus_route route1
-      ]
-      [
-        set bus_route route2
-      ]
+      set count_bus (count_bus + 1)
+      
+      set bus_route route1
     ]
   ]
   
@@ -69,6 +61,10 @@ to execute-actions
     ;print (word "B_stop " current_stop " " get-passengers-at-stop current_stop ) 
     foreach get-passengers-at-stop current_stop [
         pick-up-passenger item 0 ? 
+    ]
+    
+    if bus_type = 2 [
+      set-bus-route bus_id 
     ]
     
   ]
@@ -228,7 +224,6 @@ to add-bus-type
   ;print (word "Empty seats " empty_seats)
   if (2.75 * empty_seats) < amount_passengers_waiting [
     add-bus check-bus-type
-    set count_bus (count_bus + 1)
     show count_bus
   ]
   
@@ -420,4 +415,68 @@ to set-temp-route [b_id target]
   ; print (word "Dummy route " dummy_route)
   
   set temp_route but-first dummy_route
+end
+
+
+to set-bus-route[b_id]
+  let temp_bus_route []
+  
+  ask bus b_id[
+    let passenger_destination []
+    let distance_passenger []
+    
+    
+    foreach bus_passengers[
+      let destination_distance 0
+      set passenger_destination lput item 1 ? passenger_destination
+      set destination_distance get-shortest-distance item 1 ? current_stop
+      set distance_passenger (list destination_distance item 0 ?)
+    ]
+    
+    set distance_passenger sort-by [first ?1 < first ?2] distance_passenger
+    
+    foreach distance_passenger[
+      set temp_bus_route item 0 ? 
+    ]
+    set bus_route temp_bus_route
+  ]
+  
+end
+
+
+to-report get-shortest-distance [bs_1 bs_2]
+  let shortest_distance 0
+  let shortest_path []
+  
+  
+  ifelse is-link? route bs_1 bs_2 [
+    set shortest_distance get-distance bs_1 bs_2
+  ][
+      
+      ask bus_stop bs_1 [
+      ;; Construct the turtle path, putting the current bus_stop on the front:
+      set shortest_path fput self nw:path-to bus_stop bs_2
+      ; show path_list
+    ]
+      
+    set shortest_path but-first shortest_path
+    let temp bus_stop bs_1
+    
+    while [ not empty? shortest_path] [
+      let path_item first shortest_path
+      ask path_item [
+        ifelse end1 = temp[
+          set shortest_distance (shortest_distance + get-distance temp end2)
+          set temp end2
+        ][
+          set shortest_distance (shortest_distance + get-distance temp end1)
+          set temp end1        
+        ]
+      ]
+      
+      set shortest_path but-first shortest_path
+    ]
+  ]
+  report shortest_distance
+
 end
