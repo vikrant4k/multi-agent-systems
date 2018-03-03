@@ -20,21 +20,21 @@ globals [graph flip_num]
 
 to init-buses
   ; Initialize your agents here.
-  let route1 [4 5 16 11 17 7 1 19 23 14 0 15 18 15 12 22 13 10 21 20 9 8 2 8 6 8 9 3] ; starts at 3
-  let route2 reverse route1
+  ;let route1 [4 5 16 11 17 7 1 19 23 14 0 15 18 15 12 22 13 10 21 20 9 8 2 8 6 8 9 3] ; starts at 3
+  let brown_route [3 9 8 2 8 6]
+  
+  let rev_brown_route [6 8 2 8 9 3]
   let start_bus_s 3
-  set route2 but-first route2
-  set route2 lput start_bus_s route2 
   
   ask buses [
     if not is-list? bus_route [
       ;print (word "Flip number " flip_num)
       set flip_num flip_num + 1
       ifelse remainder flip_num 2 = 0 [
-        set bus_route route1
+        set bus_route brown_route
       ]
       [
-        set bus_route route2
+        set bus_route brown_route
       ]
     ]
   ]
@@ -75,7 +75,7 @@ to execute-actions
   
   ;print (word "No. of waiting passenger " amount_passengers_waiting)
   ;print (word "No. of passesngers " length bus_passengers )
-  add-bus-type
+  ;add-bus-type
   
 end
 
