@@ -21,6 +21,8 @@ buses-own [
   route_list      ; list of available routes
   waiting_p_count ; count of passenger left behind
   nomad           ; Bus out of fixed route
+  mean_capacity   ; Bus mean capacity percent
+  empty_bus       ; Used by bus 24
 ]
  
 extensions [nw]
@@ -90,7 +92,9 @@ to init-buses
       set route_flag false
       set vote []
       update-vote bus_id 0 0 0 0
-      
+      set all_bus_capacity 0
+      set mean_capacity 100
+      set empty_bus []  
       
       ; delete
       ifelse bus_type = 1[
@@ -138,6 +142,7 @@ end
 
 to process-passenger
   if current_stop != -1 [
+    
     ;print (word " " current_stop)
     foreach bus_passengers [
       ;print (word " " ? " what " )
@@ -150,19 +155,13 @@ to process-passenger
     foreach get-passengers-at-stop current_stop [
       if current_stop = 3 and member? item 1 ? bus_route [
         pick-up-passenger item 0 ?
-        
-        print "PICK 1"
       ]
       if current_stop != 3 and not nomad[
         pick-up-passenger item 0 ?
-        
-        print "PICK 2"
       ]
       
       if current_stop != 3 and nomad and (member? item 1 ? temp_route or member? item 1 ? bus_route)[
         pick-up-passenger item 0 ?
-        
-        print "PICK 3"
       ]
     ]
     
@@ -218,6 +217,11 @@ to run-bus
     ]
   ]
   
+  if previous_stop = 3[
+;    print (word " MEAN " mean_capacity " Bus" bus_id)
+    set mean_capacity 100
+  ]
+  
 end
 
 to process-message
@@ -229,6 +233,7 @@ if length inbox > 0 [
   
   let temp_command 0
   let bus_number 0
+  let update_empty_bus false
   
   ;print(word "PROCESS message by BUS " bus_id " : " recieved_msg)
   
@@ -246,10 +251,21 @@ if length inbox > 0 [
     
       ifelse temp_command = "GEN" [
         ; execute general method
+        
+        if temp_command_value = 2[
+          set update_empty_bus true
+        ]
       ][
         ifelse temp_command = "BUS" [
           ; execute Bus specific command
           set bus_number temp_command_value
+          
+          if bus_id = 24 and update_empty_bus[
+;            print "UPDATING empty bus"
+            if not member? bus_number empty_bus[
+              set empty_bus lput bus_number empty_bus
+            ]
+          ]
         ][
           ifelse temp_command = "CAPACITY" [
             if bus_id = 24 and temp_command_value > 0[
@@ -274,20 +290,23 @@ if length inbox > 0 [
                     if is-list? temp_command_value and not empty? temp_command_value[
                       ;print " BAAM "
                       ifelse bus_number = 24 and bus_id != 24[
-                        ;print " Here "
+;                        print (word " Here " temp_command_value " " send_route)
                         let new_route first temp_command_value
-                        if new_route != send_route[
+                        if not empty? send_route and new_route != item 0 send_route[
+                          print (word send_route " " new_route " " bus_id)
                           if not empty? send_route[
                             set send_route but-first send_route
                           ]
-                          set send_route lput item 0 temp_command_value send_route
+                          
+                          set send_route lput new_route send_route
                           set-bus-route
+                          print (word send_route " " bus_id)
                         ]
                       ][
                         if bus_id = 24[
                           ;print " There "
                           if not member? temp_command_value send_route[
-                            set send_route lput temp_command_value send_route
+                            set send_route fput temp_command_value send_route
                           ]
                         ]
                       ]
@@ -295,7 +314,7 @@ if length inbox > 0 [
                 ][
                   if temp_command = "VOTE" [
                     ; process vote received by bus 24 for voting
-                    if bus_id = 24 and is-list? temp_command_value and not empty? temp_command_value[
+                    if bus_id = 24 and is-list? temp_command_value and not empty? temp_command_value and item 0 temp_command_value != 0[
                       update-vote bus_number item 0 temp_command_value item 1 temp_command_value item 2 temp_command_value item 3 temp_command_value
                       ;print (word "BUS " bus_number "Message VOTE " temp_command_value)
                     ]
@@ -338,9 +357,15 @@ to-report construct-message
   if bus_capacity < 1[
     ; set general message bus is full
     set message lput 1 message
-    
-    set send_capacity_flag true
   ]
+  
+  if current_stop = 3 and mean_capacity > 90 and bus_id != 24[
+    set message lput 2 message
+    set send_capacity_flag true
+    
+    print (word "setting re-routing flag" bus_id)
+  ]
+     
     
   ; Bus specific message, Bus ID
   set message lput "BUS" message
@@ -398,6 +423,8 @@ to communicate
     set message item 2 message
     
 ;    if send_capacity_flag[
+
+;
 ;      if (bus_id != 24) or (item 0 get-bus-capacity < 1)[
 ;        ;send message to bus in the neighborhood
 ;        set addressee get-addressee bus_id false
@@ -409,7 +436,7 @@ to communicate
 ;      ]
 ;    ]
     ; send vote
-    if (bus_id != 24) and send_vote_flag[
+    if (bus_id != 24) and (send_vote_flag or send_capacity_flag)[
       ;print (word "BUS vote" message)
       send-message 24 message
 ;      show (word "Message sent to Bus " 24)
@@ -428,7 +455,7 @@ to communicate
     set message item 2 message
     
     ; send message to new bus
-    set addressee get-addressee bus_id true
+    set addressee get-addressee bus_id 
     
     if count buses with [bus_id = addressee] > 0 [
       send-message addressee message
@@ -444,6 +471,7 @@ to-report get-bus-capacity
   let empty_seats 0
   let passenger_at_stop 0
   let capacity_percent 0
+  let alpha 0.1
   
   if current_stop != -1 [
     set passenger_at_stop length get-passengers-at-stop current_stop
@@ -451,22 +479,35 @@ to-report get-bus-capacity
   
   ifelse bus_type = 1 [
     set empty_seats bus_type1_capacity - (length bus_passengers + passenger_at_stop)
+    
+    if empty_seats < 0[
+       set empty_seats 0
+    ]
+    
     set capacity_percent (empty_seats / bus_type1_capacity) * 100  
   ]
   [ ifelse bus_type = 2 [
       set empty_seats bus_type2_capacity - (length bus_passengers + passenger_at_stop)
+      if empty_seats < 0[
+        set empty_seats 0
+      ]
+      
       set capacity_percent (empty_seats / bus_type2_capacity) * 100
     ]
     [ if bus_type = 3 [
         set empty_seats bus_type3_capacity - (length bus_passengers  + passenger_at_stop)
+        
+        if empty_seats < 0[
+          set empty_seats 0
+        ]
+        
         set capacity_percent (empty_seats / bus_type3_capacity) * 100
       ]
     ]
   ]
   
-  if empty_seats < 0[
-    set empty_seats 0
-  ]
+  set mean_capacity (mean_capacity + (capacity_percent - mean_capacity) * alpha )
+
     
   report (list empty_seats capacity_percent)
 end
@@ -481,6 +522,7 @@ to-report take-vote
   
   ; number of passenger left after pickup
   if current_stop != -1[
+;    show ((length get-passengers-at-stop current_stop) - capacity)
     set passengers_left (length get-passengers-at-stop current_stop) - capacity
   ]
   
@@ -665,8 +707,8 @@ to add-bus-type
   ]
   
 ;  print (word " w " winner " all_bus_capacity " all_bus_capacity " total_passenger_waiting " total_passenger_waiting " winner_buses_total_capacity "  winner_buses_total_capacity " total diff " ((all_bus_capacity + winner_buses_total_capacity) - total_passenger_waiting) " " (all_bus_capacity > (total_passenger_waiting - (all_bus_capacity + winner_buses_total_capacity))))
-  if winner != 0 and all_bus_capacity > ((all_bus_capacity + winner_buses_total_capacity) - total_passenger_waiting)[
-    while [winner_requested_bus > 0][
+  if winner != 0 and  all_bus_capacity > ((all_bus_capacity + winner_buses_total_capacity) - total_passenger_waiting)[
+    while [(winner_requested_bus - length empty_bus) > 0][
     add-bus winner
     set winner_requested_bus winner_requested_bus - 1
     ]
@@ -683,20 +725,19 @@ end
 ; b_id: bus Id
 ; flag_new: If true report new bus id else report nearest bus id
 ; reports back bus-id of newest/nearest bus 
-to-report get-addressee [b_id flag_new]
+to-report get-addressee [b_id]
   let report_id 0
   
-  ifelse flag_new [
-  ; new bus id
+  ifelse not empty? empty_bus[
+    ; empty bus id
+    set report_id item 0 empty_bus
+    print (word "RE-routing " item 0 empty_bus)
+    set empty_bus but-first empty_bus
+  ][
     let current_b_id count buses
     let new_b_id current_b_id + 23
     set report_id new_b_id
-  ][
-    ; nearest bus
-    let near_b min-one-of other buses with [bus_type = 2] [distance myself]
-    if near_b != nobody [
-      ask near_b [ set report_id bus_id ]
-    ]
+    print (word "Alloting new bus" report_id)
   ]
   
   report report_id

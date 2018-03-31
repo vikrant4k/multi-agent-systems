@@ -662,7 +662,7 @@ end
 to pick-up-passenger [passenger_id]
   ifelse is-number? passenger_id = false or passenger_id < 0 or passenger_id > length passengers - 1
   [
-    show (word "WARNING: pick-up-passenger             :" "passenger does not exist in the system: " passenger_id)
+    ;show (word "WARNING: pick-up-passenger             :" "passenger does not exist in the system: " passenger_id)
   ]
   [
     let passenger item passenger_id passengers
@@ -702,7 +702,7 @@ to pick-up-passenger [passenger_id]
           ]
         ]
         [
-          show (word "WARNING: pick-up-passenger             :" "It is impossible to pick up such a passenger:" passenger_id)
+          ;show (word "WARNING: pick-up-passenger             :" "It is impossible to pick up such a passenger:" passenger_id)
         ]
       ]
     ]
