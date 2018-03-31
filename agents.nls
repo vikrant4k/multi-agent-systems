@@ -20,7 +20,7 @@ buses-own [
   route_flag      ; used by bus 24 to send update request and others to update
   route_list      ; list of available routes
   waiting_p_count ; count of passenger left behind
-  nomad           ; Bus without fixed route
+  nomad           ; Bus out of fixed route
 ]
  
 extensions [nw]
@@ -30,11 +30,11 @@ globals [graph]
 to init-buses
   ; Initialize your agents here.
   let route1 [4 5 16 11 17 7 1 19 23 14 0 15 18 15 12 22 13 10 21 20 9 8 2 8 6 8 9 3] ; starts at 3
-  let orange_route [9 20 12 15 18 3]
-  let brown_route [9 8 6 8 2 3]
-  let green_route [4 10 13 23 19 1 3]
-  let blue_route [20 21 22 0 14 3]
-  let red_route [4 5 10 7 17 11 16 3]
+  let orange_route [9 20 12 15 18 15 12 20 9 3]
+  let brown_route [9 8 6 8 2 8 9 3]
+  let green_route [4 10 13 23 19 1 19 23 13 10 4 3]
+  let blue_route [20 21 22 0 14 0 22 21 20 3]
+  let red_route [4 5 10 7 17 11 16 11 17 7 10 5 4 3]
   let flip_num random 7
   
   let temp_route_list (list (list 0 route1) (list 1 orange_route) (list 2 brown_route) (list 3 green_route) (list 4 blue_route) (list 5 red_route))
@@ -54,46 +54,42 @@ to init-buses
       set bus_route route1
       set nomad false
       
-      if count_bus > 2 [
-        ifelse flip_num = 5[
-          set nomad true 
-        ][  
-          ifelse flip_num = 0[
-            set send_route (list 1)
-            set-bus-route 
-            ;set bus_route orange_route
-          ][
-            ifelse flip_num = 1[
-              set send_route (list 2)
-              set-bus-route 
-              ;set bus_route brown_route
-            ][
-              ifelse flip_num = 2[
-                set send_route (list 3)
-                set-bus-route 
-                ;set bus_route green_route
-              ][
-                ifelse flip_num = 3[
-                  set send_route (list 4)
-                  set-bus-route 
-                  ;set bus_route blue_route
-                ][
-                  if flip_num = 4[
-                    set send_route (list 5)
-                    set-bus-route 
-                    ;set bus_route red_route
-                  ]
-                ]
-              ]
-            ]
-          ]
-        ]
+      if count_bus > 2 [ 
+         ifelse flip_num = 0[
+           set send_route (list 1)
+           set-bus-route 
+           ;set bus_route orange_route
+         ][
+           ifelse flip_num = 1[
+             set send_route (list 2)
+             set-bus-route 
+             ;set bus_route brown_route
+           ][
+             ifelse flip_num = 2[
+               set send_route (list 3)
+               set-bus-route 
+               ;set bus_route green_route
+             ][
+               ifelse flip_num = 3[
+                 set send_route (list 4)
+                 set-bus-route 
+                 ;set bus_route blue_route
+               ][
+                 if flip_num = 4[
+                   set send_route (list 5)
+                   set-bus-route 
+                   ;set bus_route red_route
+                 ]
+               ]
+             ]
+           ]
+         ]
       ]
       
       
       set route_flag false
       set vote []
-      update-vote bus_id 0 0
+      update-vote bus_id 0 0 0 0
       
       
       ; delete
@@ -149,18 +145,32 @@ to process-passenger
         drop-off-passenger item 0 ?
       ]
     ]
+    
     ;print (word "B_stop " current_stop " " get-passengers-at-stop current_stop ) 
     foreach get-passengers-at-stop current_stop [
       if current_stop = 3 and member? item 1 ? bus_route [
         pick-up-passenger item 0 ?
+        
+        print "PICK 1"
       ]
-      if current_stop != 3 [
+      if current_stop != 3 and not nomad[
         pick-up-passenger item 0 ?
+        
+        print "PICK 2"
+      ]
+      
+      if current_stop != 3 and nomad and (member? item 1 ? temp_route or member? item 1 ? bus_route)[
+        pick-up-passenger item 0 ?
+        
+        print "PICK 3"
       ]
     ]
     
-    if nomad [
+    let capacity_percent item 1 get-bus-capacity
+    ; if empty seats is less than 15% start addressing the passengers
+    if capacity_percent < 10 and bus_id != 24[
       set-passenger-route
+      set nomad true
     ]
   ]
   
@@ -173,7 +183,7 @@ to run-bus
   ifelse empty? temp_route [
     ;Target updation of fixed route, Temporary code
     let target_id item 0 bus_route
-    ;print (word " " bus_route " Target " target_id)
+;    print (word " " bus_route " Target " target_id)
     
     ; find path back to original route
     ifelse is-link? route bus_id target_id [    
@@ -186,12 +196,14 @@ to run-bus
       ;print "2. SET temp route"
       set-temp-route target_id
     ]
-  ][
-    ;print (word "Bus" bus_id "temp_route " temp_route)
-    let target item 0 temp_route
-    let target_id 0
     
-    ask target [ set target_id who]
+    set nomad false
+  ][
+;    print (word "Bus BOOM" bus_id "temp_route " temp_route)
+;    let target item 0 temp_route
+    let target_id item 0 temp_route
+    
+;    ask target [ set target_id who]
     
     ; update original route if it is same as temporary route
     if target_id = first bus_route [
@@ -282,10 +294,9 @@ if length inbox > 0 [
                     ]              
                 ][
                   if temp_command = "VOTE" [
-                    ; execute Vote specific command
-                    ;print (word "BUS " bus_number "Message VOTE " temp_command_value)
+                    ; process vote received by bus 24 for voting
                     if bus_id = 24 and is-list? temp_command_value and not empty? temp_command_value[
-                      update-vote bus_number item 0 temp_command_value item 1 temp_command_value
+                      update-vote bus_number item 0 temp_command_value item 1 temp_command_value item 2 temp_command_value item 3 temp_command_value
                       ;print (word "BUS " bus_number "Message VOTE " temp_command_value)
                     ]
                   ]
@@ -302,7 +313,7 @@ if length inbox > 0 [
 
 end
 
-to update-vote[bus_number choice count_of_bus]
+to update-vote[bus_number choice1 choice2 choice3 bus_count]
   ask bus 24[
 
     if not empty? vote[
@@ -312,20 +323,23 @@ to update-vote[bus_number choice count_of_bus]
         ]
       ]
     ]
-    set vote lput (list bus_number choice count_of_bus) vote
+    set vote lput (list bus_number choice1 choice2 choice3 bus_count) vote
   ]
 end
 
 to-report construct-message
   let message []
-  let bus_capacity get-bus-capacity
-  let send_message_flag false
+  let bus_capacity item 0 get-bus-capacity
+  let send_capacity_flag false
+  let send_vote_flag false
 
   ; general messages
   set message lput "GEN" message
   if bus_capacity < 1[
+    ; set general message bus is full
     set message lput 1 message
-    set send_message_flag true
+    
+    set send_capacity_flag true
   ]
     
   ; Bus specific message, Bus ID
@@ -334,7 +348,7 @@ to-report construct-message
   
   ; Number of empty seats
   set message lput "CAPACITY" message
-  set message lput get-bus-capacity message
+  set message lput item 0 get-bus-capacity message
   
   ; Bus-stop specific message, Bus-stop ID
   set message lput "BUS_S" message
@@ -359,41 +373,46 @@ to-report construct-message
   set message lput "VOTE" message
   let vote_recieved take-vote
   if item 0 vote_recieved != 0[
-    set send_message_flag true
+    set send_vote_flag true
   ]
   set message lput vote_recieved message
   
-  report (list send_message_flag message)
+  report (list send_capacity_flag send_vote_flag message)
 end
 
 
 to communicate
   let message []
   let addressee 0
-  let send_flag false
+  let send_capacity_flag false
+  let send_vote_flag false
 
   if current_stop != -1 [
 
-    ; construct message
+    ; construct message with additional information
     set message construct-message
-    set send_flag first message
-    set message item 1 message
+    ; unpack message
+    set send_capacity_flag item 0 message
+    set send_vote_flag item 1 message
+    ; extract the original packet to be sent 
+    set message item 2 message
     
-    if send_flag[
-      if (bus_id != 24) or (get-bus-capacity < 1)[
-        ;send message to bus in the neighborhood
-        set addressee get-addressee bus_id false
-        if addressee != 0[
-          send-message addressee message
-          ;print (word "BUS normal" message) 
-          show (word "Message sent to Bus " addressee)
-        ]
-      ]
-      ; send vote
-      if (bus_id != 24)[
-        ;print (word "BUS vote" message)
-        send-message 24 message
-      ]
+;    if send_capacity_flag[
+;      if (bus_id != 24) or (item 0 get-bus-capacity < 1)[
+;        ;send message to bus in the neighborhood
+;        set addressee get-addressee bus_id false
+;        if addressee != 0[
+;          ;send-message addressee message
+;          print (word "BUS normal" message) 
+;          show (word "Message sent to Bus " addressee)
+;        ]
+;      ]
+;    ]
+    ; send vote
+    if (bus_id != 24) and send_vote_flag[
+      ;print (word "BUS vote" message)
+      send-message 24 message
+;      show (word "Message sent to Bus " 24)
     ]
   ]
   
@@ -405,18 +424,16 @@ to communicate
     ; construct message
     set message construct-message
     ;print (word "BUS 24 calling" message)
-    set send_flag first message
-    set message item 1 message
+    set send_vote_flag item 1 message
+    set message item 2 message
     
-    if send_flag[
-      ; send message to new bus
-      set addressee get-addressee bus_id true
-      
-      if count buses with [bus_id = addressee] > 0 [
-        send-message addressee message
-        ;print (word "BUS 24 calling" message)
-        show (word "Message sent to Bus " addressee)
-      ]
+    ; send message to new bus
+    set addressee get-addressee bus_id true
+    
+    if count buses with [bus_id = addressee] > 0 [
+      send-message addressee message
+      ;print (word "BUS 24 calling" message)
+;      show (word "Message sent to Bus " addressee)
     ]
   ]
 end
@@ -426,6 +443,7 @@ end
 to-report get-bus-capacity
   let empty_seats 0
   let passenger_at_stop 0
+  let capacity_percent 0
   
   if current_stop != -1 [
     set passenger_at_stop length get-passengers-at-stop current_stop
@@ -433,73 +451,93 @@ to-report get-bus-capacity
   
   ifelse bus_type = 1 [
     set empty_seats bus_type1_capacity - (length bus_passengers + passenger_at_stop)
-    
+    set capacity_percent (empty_seats / bus_type1_capacity) * 100  
   ]
   [ ifelse bus_type = 2 [
-      set empty_seats bus_type1_capacity - (length bus_passengers + passenger_at_stop)
+      set empty_seats bus_type2_capacity - (length bus_passengers + passenger_at_stop)
+      set capacity_percent (empty_seats / bus_type2_capacity) * 100
     ]
     [ if bus_type = 3 [
-        set empty_seats bus_type1_capacity - (length bus_passengers + passenger_at_stop)
+        set empty_seats bus_type3_capacity - (length bus_passengers  + passenger_at_stop)
+        set capacity_percent (empty_seats / bus_type3_capacity) * 100
       ]
     ]
   ]
-
   
-  report empty_seats
+  if empty_seats < 0[
+    set empty_seats 0
+  ]
+    
+  report (list empty_seats capacity_percent)
 end
 
-
+; This method takes the preference of all three types of bus of an agent
 to-report take-vote
-  let report_vote [0 0]
-  let capacity get-bus-capacity
+  let report_vote [0 0 0 0]
+  let capacity item 0 get-bus-capacity
+  let vote_count 0
   
-  let passengers_left (length get-passengers-at-stop current_stop) - capacity
+  let passengers_left 0
   
+  ; number of passenger left after pickup
+  if current_stop != -1[
+    set passengers_left (length get-passengers-at-stop current_stop) - capacity
+  ]
+  
+  ; increment the total number of passenger couldn't be picked up by agent
   if passengers_left > 0[
     set waiting_p_count (waiting_p_count + passengers_left)
   ]
-  
-;  print (word "Waiting p before " waiting_p_count)
-  
+
+  ; If number of waiting passengers left behind are more than bus type 1 capacity, send voting preference
   if waiting_p_count > bus_type1_capacity[
-    let var1 round (passengers_left / bus_type1_capacity)
-    let var2 round (passengers_left / bus_type2_capacity)
-    let var3 round (passengers_left / bus_type3_capacity)
+    let var_1 waiting_p_count / bus_type1_capacity
+    let var_2 waiting_p_count / bus_type2_capacity
+    let var_3 waiting_p_count / bus_type3_capacity
     
-    print (word "var1 " var1 " var2 " var2 " var3 " var3 " passengers_left " passengers_left)
-    
-    ifelse (var3 >= 1)[
-      let vote_count var3
-      set report_vote (list 3 vote_count)
+;    print (word "var1 " var_1 " var2 " var_2 " var3 " var_3 " passengers_left " passengers_left)
+    ; total passengers waiting can fill var_x% seats of bus type x then bus type x should be 1st preference followed by decreasing order of bus capacity(default preference would be 1,2,3)
+    ifelse (var_3 > 0.65)[
+      set vote_count ceiling var_3
+      
+      ; setting vote preference to green bus, yellow bus, red bus
+      set report_vote (list 3 2 1 vote_count)
       
       set waiting_p_count (waiting_p_count - (vote_count * bus_type3_capacity))
     ][
-      ifelse (var3 < 1 and var2 >= 1)[
-        let vote_count var2
-        set report_vote (list 2 vote_count)
+      ifelse (var_3 < 0.65 and var_2 > 0.5)[
+        set vote_count ceiling var_2
+        
+        ; setting vote preference to yellow bus, green bus, red bus
+        set report_vote (list 2 1 3 vote_count)
         
         set waiting_p_count (waiting_p_count - (vote_count * bus_type2_capacity))
       ][
-        let vote_count var1
-        set report_vote (list 1 vote_count)
+        if var_1 > 1.3 [
+          set vote_count ceiling var_1
+          
+          ; setting vote preference to green bus, yellow bus, red bus
+          set report_vote (list 1 2 3 vote_count)
         
-        set waiting_p_count (waiting_p_count - (vote_count * bus_type1_capacity))
+          set waiting_p_count (waiting_p_count - (vote_count * bus_type1_capacity))
+        ]
       ]
     ]
   ]
   
   if bus_id = 24[
-    update-vote 24 item 0 report_vote item 1 report_vote
+    update-vote 24 item 0 report_vote item 1 report_vote item 2 report_vote item 3 report_vote
   ]
   
 ;  print (word "Waiting p before " waiting_p_count)
+;  print report_vote
 
   report report_vote
 end
 
 
 to add-bus-type 
-  if remainder ticks 2 = 0[
+  if remainder ticks 3 = 0[
   let green_vote 0
   let yellow_vote 0
   let red_vote 0
@@ -515,7 +553,7 @@ to add-bus-type
   let total_passenger_waiting 0
 
   let my_vote []
-  set all_bus_capacity (all_bus_capacity + get-bus-capacity)
+  set all_bus_capacity (all_bus_capacity + item 0 get-bus-capacity)
   
   if current_stop != -1[
     set my_vote take-vote
@@ -524,23 +562,71 @@ to add-bus-type
 ;  print (word "before vote " vote )
   
   foreach vote[
+    
+    
     ifelse item 1 ? = 1[
-      set green_vote (green_vote + 1)
-      set green_vote_count (green_vote_count + item 2 ?)
+      set green_vote (green_vote + 3)
+      set green_vote_count (green_vote_count + item 4 ?)
     ][
         ifelse item 1 ? = 2[
-          set yellow_vote (yellow_vote + 1)
-          set yellow_vote_count (yellow_vote_count + item 2 ?)
+          set yellow_vote (yellow_vote + 4)
+          set yellow_vote_count (yellow_vote_count + item 4 ?)
       ][
           if item 1 ? = 3[
-            set red_vote (red_vote + 1)
-            set red_vote_count (red_vote_count + item 2 ?)
+            set red_vote (red_vote + 5)
+            set red_vote_count (red_vote_count + item 4 ?)
         ]
       ]
     ]
     
+    ifelse item 2 ? = 1[
+      set green_vote (green_vote + 2)
+;      set green_vote_count (green_vote_count + item 2 ?)
+    ][
+        ifelse item 2 ? = 2[
+          set yellow_vote (yellow_vote + 2)
+;          set yellow_vote_count (yellow_vote_count + item 2 ?)
+      ][
+          if item 2 ? = 3[
+            set red_vote (red_vote + 4)
+;            set red_vote_count (red_vote_count + item 2 ?)
+        ]
+      ]
+    ]
+    
+    ifelse item 3 ? = 1[
+      set green_vote (green_vote + 1)
+;      set green_vote_count (green_vote_count + item 2 ?)
+    ][
+        ifelse item 3 ? = 2[
+          set yellow_vote (yellow_vote + 1)
+;          set yellow_vote_count (yellow_vote_count + item 2 ?)
+      ][
+          if item 3 ? = 3[
+            set red_vote (red_vote + 2)
+;            set red_vote_count (red_vote_count + item 2 ?)
+        ]
+      ]
+    ]
+    
+    
+;    ifelse item 1 ? = 1[
+;      set green_vote (green_vote + 1)
+;      set green_vote_count (green_vote_count + item 2 ?)
+;    ][
+;        ifelse item 1 ? = 2[
+;          set yellow_vote (yellow_vote + 1)
+;          set yellow_vote_count (yellow_vote_count + item 2 ?)
+;      ][
+;          if item 1 ? = 3[
+;            set red_vote (red_vote + 1)
+;            set red_vote_count (red_vote_count + item 2 ?)
+;        ]
+;      ]
+;    ]
+    
     ; reset the vote
-    update-vote item 0 ? 0 0
+    update-vote item 0 ? 0 0 0 0
     
   ]
   
@@ -550,27 +636,29 @@ to add-bus-type
 ;  print (word " red " red_vote " green " green_vote " yellow " yellow_vote)
   
   ; voting
-  ifelse (red_vote > green_vote) and (red_vote > yellow_vote)[
+  ifelse (red_vote > 0 ) and (red_vote >= green_vote) and (red_vote >= yellow_vote)[
     set winner 3
     set winner_count red_vote
     set winner_buses_total_capacity (red_vote_count * bus_type3_capacity)
-    set winner_requested_bus red_vote_count / red_vote
+    set winner_requested_bus (red_vote_count * 3) / red_vote
     
   ][
-    ifelse (yellow_vote > green_vote) and (yellow_vote > red_vote)[
+    ifelse (yellow_vote > 0 ) and (yellow_vote >= green_vote) and (yellow_vote > red_vote)[
       set winner 2
       set winner_count yellow_vote
       set winner_buses_total_capacity (yellow_vote_count * bus_type2_capacity)
-      set winner_requested_bus yellow_vote_count / yellow_vote
+      set winner_requested_bus (yellow_vote_count * 3) / yellow_vote
     ][
-      if (green_vote > yellow_vote) and (green_vote > red_vote)[
+      if (green_vote > 0 ) and (green_vote > yellow_vote) and (green_vote > red_vote)[
          set winner 1
          set winner_count green_vote
          set winner_buses_total_capacity (green_vote_count * bus_type1_capacity)
-         set winner_requested_bus green_vote_count / green_vote
+         set winner_requested_bus (green_vote_count * 3) / green_vote
+      
       ]
     ]
   ]
+  
   
   ask bus_stops [
     set total_passenger_waiting (total_passenger_waiting + length passengers_waiting)
@@ -684,7 +772,16 @@ to set-temp-route [target]
   
   ; print (word "Dummy route " dummy_route)
   
-  set temp_route but-first dummy_route
+  set dummy_route but-first dummy_route
+  
+  let temp_route_id 0
+  foreach dummy_route[
+    
+    ask ? [set temp_route_id who]
+    
+    set temp_route lput temp_route_id temp_route
+  ]
+;  set temp_route but-first dummy_route
 end
 
 
@@ -706,14 +803,14 @@ to set-passenger-route
     set distance_passenger sort-by [first ?1 < first ?2] distance_passenger
   ]
   
-  let old_bus_route bus_route
+  let old_bus_route temp_route
   
   foreach distance_passenger[
     set old_bus_route lput item 1 ? old_bus_route
   ]
 
   if not empty? temp_bus_route[
-    set bus_route old_bus_route
+    set temp_route old_bus_route
   ]
   
 end
@@ -735,17 +832,29 @@ to-report get-shortest-distance [bs_1 bs_2]
     ]
       
     set shortest_path but-first shortest_path
-    let temp bus_stop bs_1
+    let temp bs_1
     
     while [ not empty? shortest_path] [
       let path_item first shortest_path
       ask path_item [
-        ifelse end1 = temp[
-          set shortest_distance (shortest_distance + get-distance temp end2)
-          set temp end2
+        
+        let end_1 0
+        let end_2 0
+        
+        ask end1[
+          set end_1 who
+        ]
+        
+        ask end2[
+          set end_2 who
+        ]
+        
+        ifelse end_1 = temp[
+          set shortest_distance (shortest_distance + get-distance temp end_2)
+          set temp end_2
         ][
-          set shortest_distance (shortest_distance + get-distance temp end1)
-          set temp end1        
+          set shortest_distance (shortest_distance + get-distance temp end_1)
+          set temp end_1        
         ]
       ]
       

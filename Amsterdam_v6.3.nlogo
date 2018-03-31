@@ -43,6 +43,9 @@ globals [
 
   ; delete
   count_bus
+  count_green
+  count_yellow
+  count_red
 ]
 
 to setup
@@ -796,8 +799,8 @@ GRAPHICS-WINDOW
 40
 0
 30
-0
-0
+1
+1
 1
 ticks
 30.0
@@ -898,11 +901,11 @@ average_travelling_time
 11
 
 MONITOR
-1097
-504
-1336
-549
-Number of Passengers Waiting for a Bus
+1337
+150
+1576
+195
+Passengers Waiting for a Bus
 amount_passengers_waiting
 2
 1
@@ -1010,6 +1013,314 @@ MONITOR
 672
 NIL
 final_average_travelling_time
+17
+1
+11
+
+MONITOR
+1576
+185
+1647
+230
+NIL
+count_bus
+17
+1
+11
+
+MONITOR
+1339
+185
+1422
+230
+NIL
+count_green
+17
+1
+11
+
+MONITOR
+1421
+185
+1507
+230
+NIL
+count_yellow
+17
+1
+11
+
+MONITOR
+1507
+185
+1577
+230
+NIL
+count_red
+17
+1
+11
+
+MONITOR
+1169
+13
+1226
+58
+stop-0
+length(get-passengers-at-stop 0)
+17
+1
+11
+
+MONITOR
+1229
+12
+1286
+57
+stop 1
+length(get-passengers-at-stop 1)
+17
+1
+11
+
+MONITOR
+1286
+12
+1343
+57
+stop 2
+length(get-passengers-at-stop 2)
+17
+1
+11
+
+MONITOR
+1346
+12
+1403
+57
+stop 3
+length(get-passengers-at-stop 3)
+17
+1
+11
+
+MONITOR
+1403
+12
+1460
+57
+stop 4
+length(get-passengers-at-stop 4)
+17
+1
+11
+
+MONITOR
+1460
+12
+1517
+57
+stop 5
+length(get-passengers-at-stop 5)
+17
+1
+11
+
+MONITOR
+1517
+12
+1574
+57
+stop 6
+length(get-passengers-at-stop 6)
+17
+1
+11
+
+MONITOR
+1574
+12
+1631
+57
+stop 7
+length(get-passengers-at-stop 7)
+17
+1
+11
+
+MONITOR
+1169
+59
+1226
+104
+stop 8
+length(get-passengers-at-stop 8)
+17
+1
+11
+
+MONITOR
+1228
+58
+1285
+103
+stop 9
+length(get-passengers-at-stop 9)
+17
+1
+11
+
+MONITOR
+1286
+57
+1343
+102
+stop 10
+length(get-passengers-at-stop 10)
+17
+1
+11
+
+MONITOR
+1346
+58
+1403
+103
+stop 11
+length(get-passengers-at-stop 11)
+17
+1
+11
+
+MONITOR
+1403
+57
+1460
+102
+stop 12
+length(get-passengers-at-stop 12)
+17
+1
+11
+
+MONITOR
+1461
+58
+1518
+103
+stop 13
+length(get-passengers-at-stop 13)
+17
+1
+11
+
+MONITOR
+1518
+57
+1575
+102
+stop 14
+length(get-passengers-at-stop 14)
+17
+1
+11
+
+MONITOR
+1576
+57
+1633
+102
+stop 15
+length(get-passengers-at-stop 15)
+17
+1
+11
+
+MONITOR
+1170
+105
+1227
+150
+stop 16
+length(get-passengers-at-stop 16)
+17
+1
+11
+
+MONITOR
+1227
+104
+1284
+149
+sto 17
+length(get-passengers-at-stop 17)
+17
+1
+11
+
+MONITOR
+1283
+103
+1340
+148
+stop 18
+length(get-passengers-at-stop 18)
+17
+1
+11
+
+MONITOR
+1342
+103
+1399
+148
+stop 19
+length(get-passengers-at-stop 19)
+17
+1
+11
+
+MONITOR
+1398
+102
+1455
+147
+stop 20
+length(get-passengers-at-stop 20)
+17
+1
+11
+
+MONITOR
+1453
+102
+1510
+147
+stop 21
+length(get-passengers-at-stop 21)
+17
+1
+11
+
+MONITOR
+1513
+102
+1570
+147
+stop 22
+length(get-passengers-at-stop 22)
+17
+1
+11
+
+MONITOR
+1573
+102
+1630
+147
+stop 23
+length(get-passengers-at-stop 23)
 17
 1
 11
