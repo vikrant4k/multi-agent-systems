@@ -31,7 +31,9 @@ globals [graph]
 
 to init-buses
   ; Initialize your agents here.
+  ; Default route
   let route1 [4 5 16 11 17 7 1 19 23 14 0 15 18 15 12 22 13 10 21 20 9 8 2 8 6 8 9 3] ; starts at 3
+  ; Shorter routes
   let orange_route [9 20 12 15 18 15 12 20 9 3]
   let brown_route [9 8 6 8 2 8 9 3]
   let green_route [4 10 13 23 19 1 19 23 13 10 4 3]
@@ -45,17 +47,20 @@ to init-buses
   let total_buses count buses
   
   ask buses [
-    
+    ; if route list containing all routes information is not initialized, initial it here
     if not is-list? route_list[
       set route_list temp_route_list
     ]
-    
+    ; if bus's fixed route is not initialized, initialize it here
     if not is-list? bus_route [
       set count_bus (count_bus + 1)
       set send_route []
+	  
+	  ; setting the default route
       set bus_route route1
       set nomad false
       
+	  ; updating the default route of all the new buses except bus 24 based on the probability
       if count_bus > 2 [ 
          ifelse flip_num = 0[
            set send_route (list 1)
@@ -88,7 +93,7 @@ to init-buses
          ]
       ]
       
-      
+      ; initialize other variables to default values
       set route_flag false
       set vote []
       update-vote bus_id 0 0 0 0
@@ -126,8 +131,7 @@ to execute-actions
   ; process incoming message
   process-message
   
-  ; Updating temporary short path based on incoming message
-  ; set-temp-route bus_id target + 1
+  ; move the bus
   run-bus 
   
   ; add new buses
@@ -135,38 +139,40 @@ to execute-actions
     add-bus-type 
   ]
   
-  ;; Send message
+  ; Send message
   communicate
 
 end
 
+; This method will process the passenger pickup and drop request only in a bus-stop. It folows three types of behavior depending on the 
+; its current bus-stop and whether passenger destination addressing or not
 to process-passenger
   if current_stop != -1 [
     
-    ;print (word " " current_stop)
     foreach bus_passengers [
-      ;print (word " " ? " what " )
+      ; Drop only those passengers whose destination is current bus-stop or if it is the central station/hub
       if item 1 ? = current_stop or current_stop = 3[
         drop-off-passenger item 0 ?
       ]
     ]
     
-    ;print (word "B_stop " current_stop " " get-passengers-at-stop current_stop ) 
     foreach get-passengers-at-stop current_stop [
+	; Pickup only those passengers at the central station whose destination belongs to current buses route
       if current_stop = 3 and member? item 1 ? bus_route [
         pick-up-passenger item 0 ?
       ]
+	  ; Pickup all the passengers if bus is traveling in its fixed route and not passenger addressing
       if current_stop != 3 and not nomad[
         pick-up-passenger item 0 ?
       ]
-      
+      ; Pickup only those passengers who belong to its temporary or permanent route when passenger addressing
       if current_stop != 3 and nomad and (member? item 1 ? temp_route or member? item 1 ? bus_route)[
         pick-up-passenger item 0 ?
       ]
     ]
     
     let capacity_percent item 1 get-bus-capacity
-    ; if empty seats is less than 15% start addressing the passengers
+    ; if empty seats is less than 10% start addressing the passengers
     if capacity_percent < 10 and bus_id != 24[
       set-passenger-route
       set nomad true
@@ -175,16 +181,15 @@ to process-passenger
   
 end
 
+; This method will move the bus by one tile towards the target bus-stop
 to run-bus
-  ;print (word " Bus " bus_id bus_route)
-  ;print (word " Bus " bus_id temp_route)
-
+  ; if temporary route is not set, follow fixed route
   ifelse empty? temp_route [
-    ;Target updation of fixed route, Temporary code
+
     let target_id item 0 bus_route
-;    print (word " " bus_route " Target " target_id)
-    
-    ; find path back to original route
+ 
+    ; if the current bus-stop and next destination are adjacent move towards the target otherwise generate a 
+    ; temporary shortest route to that target bus-stop route
     ifelse is-link? route bus_id target_id [    
       travel-to target_id
       if current_stop = target_id [
@@ -192,31 +197,32 @@ to run-bus
         set bus_route lput target_id bus_route
       ]
     ][
-      ;print "2. SET temp route"
+      ; generate the temporary shortest route to next target in the fixed route
       set-temp-route target_id
     ]
-    
+    ; reset the passenger addressing flag after returning to fixed route
     set nomad false
   ][
-;    print (word "Bus BOOM" bus_id "temp_route " temp_route)
-;    let target item 0 temp_route
+    ; if temporary route is set implies either it is passenger addressing or it is travelling to next target 
+    ; which is not adjacent
     let target_id item 0 temp_route
     
-;    ask target [ set target_id who]
-    
-    ; update original route if it is same as temporary route
+    ; update the original route if next temporary route bus-stop is same as next original route bus-stop 
     if target_id = first bus_route [
       let target_bs item 0 bus_route
+	  ; update fixed route (circular array)
       set bus_route but-first bus_route
       set bus_route lput target_bs bus_route
     ]
-
+    ; move one tile
     travel-to target_id
+	; update temporary route
     if current_stop = target_id [
       set temp_route but-first temp_route
     ]
   ]
   
+  ; reset mean capacity percentage once bus travels out of central station
   if previous_stop = 3[
 ;    print (word " MEAN " mean_capacity " Bus" bus_id)
     set mean_capacity 100
@@ -224,10 +230,11 @@ to run-bus
   
 end
 
+; The method process the received messages in the inbox
 to process-message
-
-; process recieved message, TODO:: delegate to funtion in later stage
+; if inbox is not empty
 if length inbox > 0 [
+  ; unpack the message
   let read_msg item 0 inbox
   let recieved_msg item 2 read_msg
   
@@ -235,23 +242,23 @@ if length inbox > 0 [
   let bus_number 0
   let update_empty_bus false
   
-  ;print(word "PROCESS message by BUS " bus_id " : " recieved_msg)
-  
+  ; loop untill the whole message is read
   while [ not empty? recieved_msg]
   [
     let temp_command_value 0
     
+	; separate the keyword and values
     ifelse is-string? first recieved_msg [
       set temp_command item 0 recieved_msg
-    ]
-    [
+    ][
       set temp_command_value item 0 recieved_msg
     ]
+	; update the message
     set recieved_msg but-first recieved_msg
     
       ifelse temp_command = "GEN" [
         ; execute general method
-        
+        ; if the sender bus is running set empty flag for updating the information
         if temp_command_value = 2[
           set update_empty_bus true
         ]
@@ -260,22 +267,25 @@ if length inbox > 0 [
           ; execute Bus specific command
           set bus_number temp_command_value
           
+		  ; if agent is bus 24 and update empty flag is set for the sender, update bus 24 internal list to store this information
           if bus_id = 24 and update_empty_bus[
-;            print "UPDATING empty bus"
+;           ; update bus number of sender only if it is not present
             if not member? bus_number empty_bus[
               set empty_bus lput bus_number empty_bus
             ]
           ]
         ][
           ifelse temp_command = "CAPACITY" [
+		    ; execute capacity spcific information
+          
+            ; if agent is bus 24 then add sender empty seat information to the total number of empty seat
             if bus_id = 24 and temp_command_value > 0[
               set all_bus_capacity (all_bus_capacity + temp_command_value)
             ]
           ][
             ifelse temp_command = "BUS_S" [
               ; execute Bus-stop specific command
-              ; update temporary route to sender's bus-stop
-              ; USEGEN FLAG to avoid such specific check
+              ; if sender is calling for assistance, generate a temporary route to that target bus-stop
               if bus_id != 24 and temp_command_value > 0[
                 set-temp-route temp_command_value
               ]
@@ -286,12 +296,13 @@ if length inbox > 0 [
                 ifelse temp_command = "ROUTE" [
                     ; execute route specific command
 
-                    ;print (word " BOOM " is-list? temp_command_value " 2nd " temp_command_value)
+                    ; if the sender is bus 24 then treat the message specially
                     if is-list? temp_command_value and not empty? temp_command_value[
-                      ;print " BAAM "
+                      ; sender is bus 24 and current agent id is not 24
                       ifelse bus_number = 24 and bus_id != 24[
-;                        print (word " Here " temp_command_value " " send_route)
+;                        ; process the new route request from sender
                         let new_route first temp_command_value
+						; if the new route request if different from already pursuing route, update
                         if not empty? send_route and new_route != item 0 send_route[
                           print (word send_route " " new_route " " bus_id)
                           if not empty? send_route[
@@ -300,11 +311,10 @@ if length inbox > 0 [
                           
                           set send_route lput new_route send_route
                           set-bus-route
-                          print (word send_route " " bus_id)
                         ]
                       ][
                         if bus_id = 24[
-                          ;print " There "
+                          ; update the senders route into the list
                           if not member? temp_command_value send_route[
                             set send_route fput temp_command_value send_route
                           ]
@@ -316,7 +326,6 @@ if length inbox > 0 [
                     ; process vote received by bus 24 for voting
                     if bus_id = 24 and is-list? temp_command_value and not empty? temp_command_value and item 0 temp_command_value != 0[
                       update-vote bus_number item 0 temp_command_value item 1 temp_command_value item 2 temp_command_value item 3 temp_command_value
-                      ;print (word "BUS " bus_number "Message VOTE " temp_command_value)
                     ]
                   ]
                 ]
@@ -332,9 +341,10 @@ if length inbox > 0 [
 
 end
 
+; This method updates the votes of agents in bus 24 storage
 to update-vote[bus_number choice1 choice2 choice3 bus_count]
   ask bus 24[
-
+    ; update the vote
     if not empty? vote[
       foreach vote[
         if item 0 ? = bus_number[
@@ -346,6 +356,7 @@ to update-vote[bus_number choice1 choice2 choice3 bus_count]
   ]
 end
 
+; This method is used to construct a message structure with the related information
 to-report construct-message
   let message []
   let bus_capacity item 0 get-bus-capacity
@@ -354,16 +365,17 @@ to-report construct-message
 
   ; general messages
   set message lput "GEN" message
+  ; if bus is full the set it to 1
   if bus_capacity < 1[
     ; set general message bus is full
     set message lput 1 message
   ]
   
+  ; if buses average empty seat percentage is more than 90 in a complete round trip then set value 2 
+  ; to indicate re-routing required for this bus 
   if current_stop = 3 and mean_capacity > 90 and bus_id != 24[
     set message lput 2 message
     set send_capacity_flag true
-    
-    print (word "setting re-routing flag" bus_id)
   ]
      
     
@@ -384,13 +396,12 @@ to-report construct-message
   
   ; Route specific message
   set message lput "ROUTE" message
+  ; if agent is bus 24 then send the new route information to the receiver 
   ifelse bus_id = 24 and route_flag and not empty? send_route[
     ;print (word "send_route before for bus" bus_id " " send_route)
     set message lput item 0 send_route message
     set send_route but-first send_route
-    ;print (word "send_route after for bus" bus_id " " send_route)
   ][
-    ;print (word "send_route other for bus" bus_id " " send_route)
     set message lput send_route message
   ]
   
@@ -405,13 +416,14 @@ to-report construct-message
   report (list send_capacity_flag send_vote_flag message)
 end
 
-
+; this method is used to communicate between agents by building a message packet and sending it to correct addressee
 to communicate
   let message []
   let addressee 0
   let send_capacity_flag false
   let send_vote_flag false
 
+  ; If bus is at a bus-stop,
   if current_stop != -1 [
 
     ; construct message with additional information
@@ -421,93 +433,84 @@ to communicate
     set send_vote_flag item 1 message
     ; extract the original packet to be sent 
     set message item 2 message
-    
-;    if send_capacity_flag[
 
-;
-;      if (bus_id != 24) or (item 0 get-bus-capacity < 1)[
-;        ;send message to bus in the neighborhood
-;        set addressee get-addressee bus_id false
-;        if addressee != 0[
-;          ;send-message addressee message
-;          print (word "BUS normal" message) 
-;          show (word "Message sent to Bus " addressee)
-;        ]
-;      ]
-;    ]
-    ; send vote
+    ; send vote and/or capacity information to bus 24
     if (bus_id != 24) and (send_vote_flag or send_capacity_flag)[
-      ;print (word "BUS vote" message)
       send-message 24 message
-;      show (word "Message sent to Bus " 24)
     ]
   ]
   
-  ;print (word "outmessage for BUS" bus_id " " length send_route " send_route " send_route)
+  ; if agent is bus 24 and there is empty bus request in a route then send the route information to an empty bus
   if bus_id = 24 and length send_route > 0[
 
     set route_flag true
     
     ; construct message
     set message construct-message
-    ;print (word "BUS 24 calling" message)
     set send_vote_flag item 1 message
     set message item 2 message
     
     ; send message to new bus
     set addressee get-addressee bus_id 
     
+	; if addressee bus exist
     if count buses with [bus_id = addressee] > 0 [
       send-message addressee message
-      ;print (word "BUS 24 calling" message)
-;      show (word "Message sent to Bus " addressee)
     ]
   ]
 end
 
 
-;; return the number of empty seats
+; return the number of empty seats, empty seat percent
 to-report get-bus-capacity
   let empty_seats 0
   let passenger_at_stop 0
   let capacity_percent 0
   let alpha 0.1
   
+  ; get the number of passenger waiting at the bus-stop
   if current_stop != -1 [
     set passenger_at_stop length get-passengers-at-stop current_stop
   ]
   
+  ; calculate empty seats and percentage based on the type of bus
   ifelse bus_type = 1 [
     set empty_seats bus_type1_capacity - (length bus_passengers + passenger_at_stop)
-    
+    ; if empty seats is negative, i.e. more passengers are waiting than the bus capacity 
+    ; then set empty seat to zero
     if empty_seats < 0[
        set empty_seats 0
     ]
     
+	; calculate the empty seat percentage
     set capacity_percent (empty_seats / bus_type1_capacity) * 100  
-  ]
-  [ ifelse bus_type = 2 [
+  ][ 
+    ; process for bus type 2
+    ifelse bus_type = 2 [
       set empty_seats bus_type2_capacity - (length bus_passengers + passenger_at_stop)
       if empty_seats < 0[
         set empty_seats 0
       ]
       
+	  ; calculate the empty seat percentage
       set capacity_percent (empty_seats / bus_type2_capacity) * 100
-    ]
-    [ if bus_type = 3 [
+    ][ 
+	   ; process for bus type 3
+	   if bus_type = 3 [
         set empty_seats bus_type3_capacity - (length bus_passengers  + passenger_at_stop)
         
         if empty_seats < 0[
           set empty_seats 0
         ]
         
+		; calculate the empty seat percentage
         set capacity_percent (empty_seats / bus_type3_capacity) * 100
       ]
     ]
   ]
   
+  ; update the mean empty bus capacity percentage
   set mean_capacity (mean_capacity + (capacity_percent - mean_capacity) * alpha )
-
     
   report (list empty_seats capacity_percent)
 end
@@ -522,7 +525,6 @@ to-report take-vote
   
   ; number of passenger left after pickup
   if current_stop != -1[
-;    show ((length get-passengers-at-stop current_stop) - capacity)
     set passengers_left (length get-passengers-at-stop current_stop) - capacity
   ]
   
@@ -537,7 +539,6 @@ to-report take-vote
     let var_2 waiting_p_count / bus_type2_capacity
     let var_3 waiting_p_count / bus_type3_capacity
     
-;    print (word "var1 " var_1 " var2 " var_2 " var3 " var_3 " passengers_left " passengers_left)
     ; total passengers waiting can fill var_x% seats of bus type x then bus type x should be 1st preference followed by decreasing order of bus capacity(default preference would be 1,2,3)
     ifelse (var_3 > 0.65)[
       set vote_count ceiling var_3
@@ -567,17 +568,15 @@ to-report take-vote
     ]
   ]
   
+  ; update the vote of bus 24 directly
   if bus_id = 24[
     update-vote 24 item 0 report_vote item 1 report_vote item 2 report_vote item 3 report_vote
   ]
-  
-;  print (word "Waiting p before " waiting_p_count)
-;  print report_vote
 
   report report_vote
 end
 
-
+; This method is used to evaluate the borda voting scheme after every 3rd tick and add bus accordingly 
 to add-bus-type 
   if remainder ticks 3 = 0[
   let green_vote 0
@@ -595,17 +594,18 @@ to add-bus-type
   let total_passenger_waiting 0
 
   let my_vote []
+  ; update all bus capacity with bus 24 information as well
   set all_bus_capacity (all_bus_capacity + item 0 get-bus-capacity)
   
+  ; take bus 24 vote
   if current_stop != -1[
     set my_vote take-vote
   ]
   
-;  print (word "before vote " vote )
-  
+  ; evaluate the borga voting scheme for all the vote received
   foreach vote[
-    
-    
+    ; using weighted borda from the first preference to take account of cost of bus, travel cost and seat capacity 
+    ; of different type of bus. This weighing scheme ensures larger buses are added than small bus.
     ifelse item 1 ? = 1[
       set green_vote (green_vote + 3)
       set green_vote_count (green_vote_count + item 4 ?)
@@ -621,100 +621,83 @@ to add-bus-type
       ]
     ]
     
+	; second preference vote are given equal weights of 2
     ifelse item 2 ? = 1[
       set green_vote (green_vote + 2)
-;      set green_vote_count (green_vote_count + item 2 ?)
     ][
         ifelse item 2 ? = 2[
           set yellow_vote (yellow_vote + 2)
-;          set yellow_vote_count (yellow_vote_count + item 2 ?)
       ][
           if item 2 ? = 3[
             set red_vote (red_vote + 4)
-;            set red_vote_count (red_vote_count + item 2 ?)
         ]
       ]
     ]
     
     ifelse item 3 ? = 1[
       set green_vote (green_vote + 1)
-;      set green_vote_count (green_vote_count + item 2 ?)
     ][
         ifelse item 3 ? = 2[
           set yellow_vote (yellow_vote + 1)
-;          set yellow_vote_count (yellow_vote_count + item 2 ?)
       ][
           if item 3 ? = 3[
             set red_vote (red_vote + 2)
-;            set red_vote_count (red_vote_count + item 2 ?)
         ]
       ]
     ]
-    
-    
-;    ifelse item 1 ? = 1[
-;      set green_vote (green_vote + 1)
-;      set green_vote_count (green_vote_count + item 2 ?)
-;    ][
-;        ifelse item 1 ? = 2[
-;          set yellow_vote (yellow_vote + 1)
-;          set yellow_vote_count (yellow_vote_count + item 2 ?)
-;      ][
-;          if item 1 ? = 3[
-;            set red_vote (red_vote + 1)
-;            set red_vote_count (red_vote_count + item 2 ?)
-;        ]
-;      ]
-;    ]
-    
+        
     ; reset the vote
     update-vote item 0 ? 0 0 0 0
     
   ]
   
-;  print (word "after vote " vote )
-
-  
-;  print (word " red " red_vote " green " green_vote " yellow " yellow_vote)
-  
-  ; voting
+  ; evaluating the winner and breaking tie by selecing the bus with more seats
   ifelse (red_vote > 0 ) and (red_vote >= green_vote) and (red_vote >= yellow_vote)[
     set winner 3
     set winner_count red_vote
+	
+	; evaluate the approximate number of bus required of winning type
     set winner_buses_total_capacity (red_vote_count * bus_type3_capacity)
+	; multiplied by 3 to compensate for Borda weights
     set winner_requested_bus (red_vote_count * 3) / red_vote
     
   ][
     ifelse (yellow_vote > 0 ) and (yellow_vote >= green_vote) and (yellow_vote > red_vote)[
       set winner 2
       set winner_count yellow_vote
+	  
+	  ; evaluate the approximate number of bus required of winning type
       set winner_buses_total_capacity (yellow_vote_count * bus_type2_capacity)
+	  ; multiplied by 3 to compensate for Borda weights
       set winner_requested_bus (yellow_vote_count * 3) / yellow_vote
     ][
       if (green_vote > 0 ) and (green_vote > yellow_vote) and (green_vote > red_vote)[
          set winner 1
          set winner_count green_vote
+		 
+		 ; evaluate the approximate number of bus required of winning type
          set winner_buses_total_capacity (green_vote_count * bus_type1_capacity)
+		 ; multiplied by 3 to compensate for Borda weights
          set winner_requested_bus (green_vote_count * 3) / green_vote
       
       ]
     ]
   ]
   
-  
+  ; get total waiting passengers at all the bus-stop. This information is made available at any bus-stop
   ask bus_stops [
     set total_passenger_waiting (total_passenger_waiting + length passengers_waiting)
   ]
   
-;  print (word " w " winner " all_bus_capacity " all_bus_capacity " total_passenger_waiting " total_passenger_waiting " winner_buses_total_capacity "  winner_buses_total_capacity " total diff " ((all_bus_capacity + winner_buses_total_capacity) - total_passenger_waiting) " " (all_bus_capacity > (total_passenger_waiting - (all_bus_capacity + winner_buses_total_capacity))))
+  ; Add buses only if the number of empty seats will decrease over the period of time
   if winner != 0 and  all_bus_capacity > ((all_bus_capacity + winner_buses_total_capacity) - total_passenger_waiting)[
-    while [(winner_requested_bus - length empty_bus) > 0][
+    ; rather than always adding new bus, re-allocate the old buses and add only the needed only
+	while [(winner_requested_bus - length empty_bus) > 0][
     add-bus winner
     set winner_requested_bus winner_requested_bus - 1
     ]
-    ;print(word " Winner: " winner)
   ]
-;  add-bus winner
+  ; reset all bus capacity to zero
   set all_bus_capacity 0
 ]
   
@@ -722,12 +705,15 @@ to add-bus-type
 
 end
 
+
+; helper method to get bus id of the addressee
 ; b_id: bus Id
 ; flag_new: If true report new bus id else report nearest bus id
 ; reports back bus-id of newest/nearest bus 
 to-report get-addressee [b_id]
   let report_id 0
   
+  ; if bus waiting for re-routing than report that bus id otherwise report newly added bus id
   ifelse not empty? empty_bus[
     ; empty bus id
     set report_id item 0 empty_bus
@@ -745,7 +731,7 @@ end
 
 
 
-; set up temporary route to target bus-stop for bus_id
+; Helper method to set up temporary route to target bus-stop for bus_id
 to set-temp-route [target]
   let dummy_route []
   let path_list []
@@ -753,16 +739,15 @@ to set-temp-route [target]
   let temp_var1 bus_stop current_stop
   let temp_var2 -1
   
-  ; current stop could be -1 if the gent is travelling in between stop
+  ; current stop could be -1 if the gent is traveling in between stop
   if current_stop = -1 [
     set temp_stop next_stop 
     set temp_var1 temp_stop
   ]
   
   ask bus_stop temp_stop [
-    ;; Construct the turtle path, putting the current bus_stop on the front:
+    ; Construct the turtle path, putting the current bus_stop on the front:
     set path_list fput self nw:path-to bus_stop target
-    ; show path_list
   ]
   set dummy_route lput bus_stop current_stop dummy_route
   
@@ -811,8 +796,6 @@ to set-temp-route [target]
   let dummy_route_reverse reverse dummy_route
   foreach dummy_route [ set dummy_route_reverse lput ? dummy_route_reverse ]
   
-  ; print (word "Dummy route " dummy_route)
-  
   set dummy_route but-first dummy_route
   
   let temp_route_id 0
@@ -822,10 +805,9 @@ to set-temp-route [target]
     
     set temp_route lput temp_route_id temp_route
   ]
-;  set temp_route but-first dummy_route
 end
 
-
+; helper method to evalute passenger addressing temporary route in increasing order of distance to destination
 to set-passenger-route
   let temp_bus_route []
 
@@ -846,35 +828,37 @@ to set-passenger-route
   
   let old_bus_route temp_route
   
+  ; put the new route in the front of current temporary route
   foreach distance_passenger[
     set old_bus_route lput item 1 ? old_bus_route
   ]
-
+  
+  ; update temporary route
   if not empty? temp_bus_route[
     set temp_route old_bus_route
   ]
   
 end
 
-
+; helper method to get shortest distance between two bus-stop irrespective of they are not adjacent or not
 to-report get-shortest-distance [bs_1 bs_2]
   let shortest_distance 0
   let shortest_path []
   
-  
+  ; if bus-stops are adjacent
   ifelse is-link? route bs_1 bs_2 [
     set shortest_distance get-distance bs_1 bs_2
   ][
-      
+      ; find the shortest path between the non adjacent bus-stops
       ask bus_stop bs_1 [
-      ;; Construct the turtle path, putting the current bus_stop on the front:
+      ; Construct the turtle path, putting the current bus_stop on the front:
       set shortest_path fput self nw:path-to bus_stop bs_2
-      ; show path_list
     ]
       
     set shortest_path but-first shortest_path
     let temp bs_1
     
+	; evaluate distance of the shortest path
     while [ not empty? shortest_path] [
       let path_item first shortest_path
       ask path_item [
@@ -906,13 +890,11 @@ to-report get-shortest-distance [bs_1 bs_2]
 
 end
 
+; helper method to set fixed bus route
 to set-bus-route
-  ;print (word " KAABOOM " send_route)
   if not empty? send_route[
     foreach route_list[
-      ;print (word "SEND ROUTE of BUS " bus_id " route id : " item 0 ? " recieved ID" item 0 send_route " check " (item 0 send_route = item 0 ?))
       if item 0 send_route = item 0 ?[
-        ;print (word "setting ROUTE of BUS " bus_id " route : " item 1 ?)
         set bus_route item 1 ? 
       ]
     ]
